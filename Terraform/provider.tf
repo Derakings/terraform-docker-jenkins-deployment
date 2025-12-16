@@ -14,7 +14,7 @@ terraform {
     key            = "docker-app/terraform.tfstate"
     region         = "eu-west-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-lock"  # Optional: for state locking
+    dynamodb_table = "terraform-state-lock"  # Optional: for state locking (create DynamoDB table first)
   }
 }
 

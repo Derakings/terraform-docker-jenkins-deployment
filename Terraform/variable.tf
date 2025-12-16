@@ -1,31 +1,35 @@
 variable "aws_region" {
   description = "AWS region for resources"
   type        = string
-  default     = "eu-west-1"
+  # No default - must be specified in terraform.tfvars
 }
 
-variable "environment" {
-  description = "Environment name"
+variable "ami_id" {
+  description = "AMI ID for EC2 instance (Ubuntu 22.04 LTS for your region)"
   type        = string
-  default     = "development"
+}
+
+variable "key_name" {
+  description = "Name of the SSH key pair (must exist in AWS)"
+  type        = string
+}
+
+variable "allowed_ssh_cidr" {
+  description = "CIDR blocks allowed to SSH into the instance (your IP/32)"
+  type        = list(string)
+}
+
+
+variable "environment" {
+  description = "Environment name (development/staging/production)"
+  type        = string
+  default     = "production"
 }
 
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
   default     = "t2.micro"
-}
-
-variable "ami_id" {
-  description = "AMI ID for EC2 instance (Ubuntu 22.04 LTS)"
-  type        = string
-  default     = "ami-0d64bb532e0502c46"  # Ubuntu 22.04 LTS in eu-west-1
-}
-
-variable "key_name" {
-  description = "Name of the SSH key pair"
-  type        = string
-  default     = "stage-3" # Change this to your key pair name
 }
 
 variable "instance_name" {
@@ -40,14 +44,8 @@ variable "vpc_id" {
   default     = ""
 }
 
-variable "allowed_ssh_cidr" {
-  description = "CIDR blocks allowed to SSH into the instance"
-  type        = list(string)
-  default     = ["3.252.125.223"]  # Change this to your IP for better security
-}
-
 variable "docker_port" {
-  description = "Port for Docker application"
+  description = "Port for Docker application (mapped from container port 5000)"
   type        = number
-  default     = 5000
+  default     = 80
 }

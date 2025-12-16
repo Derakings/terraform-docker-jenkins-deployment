@@ -30,5 +30,5 @@ output "ssh_command" {
 
 output "app_url" {
   description = "URL to access the Docker application"
-  value       = "http://${aws_instance.docker_app.public_ip}:${var.docker_port}"
+  value       = "http://${aws_instance.docker_app.public_ip}${var.docker_port == 80 ? "" : ":${var.docker_port}"}"
 }

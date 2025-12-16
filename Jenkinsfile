@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     environment {
-        AWS_REGION = 'us-east-1'
+        AWS_REGION = 'eu-west-1'
         TF_VERSION = '1.6.6'
         DOCKER_IMAGE_NAME = 'user-microservice'
         DOCKER_IMAGE_TAG = "${env.BUILD_NUMBER}"
@@ -302,7 +302,7 @@ pipeline {
         }
         
         failure {
-            echo '✗ Pipeline failed! Check the console output for details.'
+            echo 'Pipeline failed! Check the console output for details.'
         }
         
         always {
