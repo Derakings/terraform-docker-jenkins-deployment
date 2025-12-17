@@ -14,7 +14,7 @@ pipeline {
         // Step 1: Clone the repo
         stage('1. Clone Repository') {
             steps {
-                echo '========================================
+                echo '========================================'
                 echo 'Step 1: Cloning the repository'
                 echo '========================================'
                 checkout scm
