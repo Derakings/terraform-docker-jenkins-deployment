@@ -30,9 +30,13 @@ pipeline {
                     echo 'Step 2: Installing Terraform'
                     echo '========================================'
                     sh """
-                        # Check if Terraform is installed
-                        if [ -f /usr/local/bin/terraform ]; then
-                            INSTALLED_VERSION=\$(terraform version -json 2>/dev/null | grep -o '"terraform_version":"[^"]*' | cut -d'"' -f4)
+                        # Set up local bin directory for Jenkins user
+                        mkdir -p \$HOME/.local/bin
+                        export PATH="\$HOME/.local/bin:\$PATH"
+                        
+                        # Check if Terraform is installed in user bin
+                        if [ -f "\$HOME/.local/bin/terraform" ]; then
+                            INSTALLED_VERSION=\$(\$HOME/.local/bin/terraform version -json 2>/dev/null | grep -o '"terraform_version":"[^"]*' | cut -d'"' -f4)
                             echo "Terraform \$INSTALLED_VERSION is already installed"
                             if [ "\$INSTALLED_VERSION" == "${TF_VERSION}" ]; then
                                 echo "✓ Correct version already installed"
@@ -40,16 +44,17 @@ pipeline {
                             fi
                         fi
                         
-                        # Install Terraform
+                        # Install Terraform to user directory (no sudo needed)
                         echo "Installing Terraform ${TF_VERSION}..."
                         cd /tmp
                         wget -q https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
                         unzip -o terraform_${TF_VERSION}_linux_amd64.zip
-                        sudo mv terraform /usr/local/bin/
+                        mv terraform \$HOME/.local/bin/
                         rm terraform_${TF_VERSION}_linux_amd64.zip
                         
-                        terraform version
-                        echo "✓ Terraform installed successfully"
+                        # Verify installation
+                        \$HOME/.local/bin/terraform version
+                        echo "✓ Terraform installed successfully to \$HOME/.local/bin"
                     """
                 }
             }
@@ -71,17 +76,17 @@ pipeline {
                             echo '========================================'
                             
                             echo 'Initializing Terraform with S3 backend...'
-                            sh 'terraform init'
+                            sh '$HOME/.local/bin/terraform init'
                             
                             echo 'Planning infrastructure changes...'
-                            sh 'terraform plan -out=tfplan'
+                            sh '$HOME/.local/bin/terraform plan -out=tfplan'
                             
                             echo 'Applying Terraform configuration...'
-                            sh 'terraform apply -auto-approve tfplan'
+                            sh '$HOME/.local/bin/terraform apply -auto-approve tfplan'
                             
                             // Capture EC2 public IP
                             env.EC2_PUBLIC_IP = sh(
-                                script: 'terraform output -raw instance_public_ip',
+                                script: '$HOME/.local/bin/terraform output -raw instance_public_ip',
                                 returnStdout: true
                             ).trim()
                             
