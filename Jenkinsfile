@@ -8,6 +8,12 @@ pipeline {
         DOCKER_IMAGE_TAG = "${env.BUILD_NUMBER}"
         SSH_KEY_CREDENTIAL_ID = 'ec2-ssh-key'
         AWS_CREDENTIAL_ID = 'aws-credentials'
+        
+        // Terraform Variables
+        TF_VAR_aws_region = 'eu-west-1'
+        TF_VAR_ami_id = 'ami-0d64bb532e0502c46'
+        TF_VAR_key_name = 'stage-3'
+        TF_VAR_allowed_ssh_cidr = '["3.252.125.223/32"]'
     }
     
     stages {
@@ -79,10 +85,10 @@ pipeline {
                             sh '$HOME/.local/bin/terraform init'
                             
                             echo 'Planning infrastructure changes...'
-                            sh '$HOME/.local/bin/terraform plan -out=tfplan'
+                            sh '$HOME/.local/bin/terraform plan'
                             
                             echo 'Applying Terraform configuration...'
-                            sh '$HOME/.local/bin/terraform apply -auto-approve tfplan'
+                            sh '$HOME/.local/bin/terraform apply -auto-approve'
                             
                             // Capture EC2 public IP
                             env.EC2_PUBLIC_IP = sh(
