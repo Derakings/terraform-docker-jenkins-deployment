@@ -86,9 +86,33 @@ pipeline {
                             
                             echo 'Planning infrastructure changes...'
                             sh '''
-                                $HOME/.local/bin/terraform plan \
+                                # Try to plan, if locked, force unlock and retry
+                                if ! $HOME/.local/bin/terraform plan \
                                     -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
-                                    -out=tfplan
+                                    -out=tfplan 2>&1 | tee /tmp/tf_plan.log; then
+                                    
+                                    # Check if it's a lock error
+                                    if grep -q "Error acquiring the state lock" /tmp/tf_plan.log; then
+                                        echo "⚠️  State lock detected, extracting lock ID..."
+                                        LOCK_ID=$(grep "ID:" /tmp/tf_plan.log | head -1 | awk '{print $2}')
+                                        
+                                        if [ ! -z "$LOCK_ID" ]; then
+                                            echo "Forcing unlock of state lock: $LOCK_ID"
+                                            $HOME/.local/bin/terraform force-unlock -force "$LOCK_ID"
+                                            
+                                            echo "Retrying plan..."
+                                            $HOME/.local/bin/terraform plan \
+                                                -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
+                                                -out=tfplan
+                                        else
+                                            echo "❌ Could not extract lock ID"
+                                            exit 1
+                                        fi
+                                    else
+                                        # Not a lock error, fail
+                                        exit 1
+                                    fi
+                                fi
                             '''
                             
                             echo 'Applying Terraform configuration...'
