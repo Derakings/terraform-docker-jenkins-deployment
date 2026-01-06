@@ -8,7 +8,7 @@ terraform {
     }
   }
   
-  # S3 backend for remote state storage
+  # S3 backend for remote state storage (comment out until resources are created)
   backend "s3" {
     bucket         = "terraform-state-bucket-docker-app"  # Change this to your bucket name
     key            = "docker-app/terraform.tfstate"

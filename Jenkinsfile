@@ -12,7 +12,7 @@ pipeline {
         // Terraform Variables
         TF_VAR_aws_region = 'eu-west-1'
         TF_VAR_ami_id = 'ami-0d64bb532e0502c46'
-        TF_VAR_key_name = 'stage-3'
+        TF_VAR_key_name = 'jenkins'
 
     }
     

@@ -10,5 +10,5 @@ instance_name = "docker-app-server"
 vpc_id        = ""  
 
 # Security Settings
-allowed_ssh_cidr = ["3.252.125.223/32"]  allow ssh to your specific ip address
+allowed_ssh_cidr = ["34.245.151.138/32"]  allow ssh to your specific ip address
 docker_port      = 80  # Map container port 5000 to host port 80
