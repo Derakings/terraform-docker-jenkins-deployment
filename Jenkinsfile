@@ -87,7 +87,7 @@ pipeline {
                             echo 'Planning infrastructure changes...'
                             sh '''
                                 $HOME/.local/bin/terraform plan \
-                                    -var="allowed_ssh_cidr=[\\"3.252.125.223/32\\"]" \
+                                    -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
                                     -out=tfplan
                             '''
                             
