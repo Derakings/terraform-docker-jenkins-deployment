@@ -66,8 +66,8 @@ pipeline {
             }
         }
         
-        // Step 3: Creating the EC2 with the Terraform config
-        stage('3. Create EC2 with Terraform') {
+        // Step 3: Provision/Verify Infrastructure with Terraform (Optimized)
+        stage('3. Provision/Verify Infrastructure') {
             steps {
                 dir('Terraform') {
                     withCredentials([[
@@ -78,45 +78,67 @@ pipeline {
                     ]]) {
                         script {
                             echo '========================================'
-                            echo 'Step 3: Creating EC2 with Terraform'
+                            echo 'Step 3: Provisioning/Verifying Infrastructure'
                             echo '========================================'
                             
                             echo 'Initializing Terraform with S3 backend...'
-                            sh '$HOME/.local/bin/terraform init'
+                            sh '$HOME/.local/bin/terraform init -reconfigure'
                             
                             echo 'Planning infrastructure changes...'
-                            sh '''
-                                # Try to plan, if locked, force unlock and retry
-                                if ! $HOME/.local/bin/terraform plan \
-                                    -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
-                                    -out=tfplan 2>&1 | tee /tmp/tf_plan.log; then
-                                    
-                                    # Check if it's a lock error
-                                    if grep -q "Error acquiring the state lock" /tmp/tf_plan.log; then
-                                        echo "⚠️  State lock detected, extracting lock ID..."
-                                        LOCK_ID=$(grep "ID:" /tmp/tf_plan.log | head -1 | awk '{print $2}')
+                            def planExitCode = sh(
+                                script: '''
+                                    if ! $HOME/.local/bin/terraform plan \
+                                        -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
+                                        -out=tfplan \
+                                        -detailed-exitcode \
+                                        -lock-timeout=5m 2>&1 | tee /tmp/tf_plan.log; then
                                         
-                                        if [ ! -z "$LOCK_ID" ]; then
-                                            echo "Forcing unlock of state lock: $LOCK_ID"
-                                            $HOME/.local/bin/terraform force-unlock -force "$LOCK_ID"
+                                        EXIT_CODE=$?
+                                        # Exit code 2 means changes detected (not an error)
+                                        if [ $EXIT_CODE -eq 2 ]; then
+                                            exit 2
+                                        fi
+                                        
+                                        # Check if it's a lock error
+                                        if grep -q "Error acquiring the state lock" /tmp/tf_plan.log; then
+                                            echo "⚠️  State lock detected, extracting lock ID..."
+                                            LOCK_ID=$(grep "ID:" /tmp/tf_plan.log | head -1 | awk '{print $2}')
                                             
-                                            echo "Retrying plan..."
-                                            $HOME/.local/bin/terraform plan \
-                                                -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
-                                                -out=tfplan
+                                            if [ ! -z "$LOCK_ID" ]; then
+                                                echo "Forcing unlock of state lock: $LOCK_ID"
+                                                $HOME/.local/bin/terraform force-unlock -force "$LOCK_ID"
+                                                
+                                                echo "Retrying plan..."
+                                                $HOME/.local/bin/terraform plan \
+                                                    -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
+                                                    -out=tfplan \
+                                                    -detailed-exitcode \
+                                                    -lock-timeout=5m
+                                                exit $?
+                                            else
+                                                echo "❌ Could not extract lock ID"
+                                                exit 1
+                                            fi
                                         else
-                                            echo "❌ Could not extract lock ID"
                                             exit 1
                                         fi
-                                    else
-                                        # Not a lock error, fail
-                                        exit 1
                                     fi
-                                fi
-                            '''
+                                ''',
+                                returnStatus: true
+                            )
                             
-                            echo 'Applying Terraform configuration...'
-                            sh '$HOME/.local/bin/terraform apply -auto-approve tfplan'
+                            // Exit code: 0=no changes, 2=changes detected, 1=error
+                            if (planExitCode == 2) {
+                                echo 'Infrastructure changes detected, applying...'
+                                sh '$HOME/.local/bin/terraform apply -auto-approve tfplan'
+                                env.INFRASTRUCTURE_CHANGED = 'true'
+                                echo '✓ Infrastructure provisioned successfully'
+                            } else if (planExitCode == 0) {
+                                echo '✓ No infrastructure changes needed (existing setup detected)'
+                                env.INFRASTRUCTURE_CHANGED = 'false'
+                            } else {
+                                error 'Terraform plan failed'
+                            }
                             
                             // Capture EC2 public IP
                             env.EC2_PUBLIC_IP = sh(
@@ -124,12 +146,16 @@ pipeline {
                                 returnStdout: true
                             ).trim()
                             
-                            echo "✓ EC2 Instance created successfully"
                             echo "EC2 Public IP: ${env.EC2_PUBLIC_IP}"
                             
-                            // Wait for EC2 to initialize
-                            echo 'Waiting 60 seconds for EC2 to fully initialize...'
-                            sleep(60)
+                            // Only wait if infrastructure was just created/modified
+                            if (env.INFRASTRUCTURE_CHANGED == 'true') {
+                                echo 'New infrastructure changes applied, waiting 60 seconds for initialization...'
+                                sleep(60)
+                            } else {
+                                echo 'Using existing infrastructure, skipping initialization wait'
+                                sleep(5)
+                            }
                         }
                     }
                 }
@@ -163,8 +189,8 @@ pipeline {
             }
         }
         
-        // Step 5: Install Docker in the server
-        stage('5. Install Docker on Server') {
+        // Step 5: Install/Verify Docker on Server (Optimized)
+        stage('5. Install/Verify Docker') {
             steps {
                 script {
                     withCredentials([sshUserPrivateKey(
@@ -173,23 +199,23 @@ pipeline {
                         usernameVariable: 'SSH_USER'
                     )]) {
                         echo '========================================'
-                        echo 'Step 5: Installing Docker on server'
+                        echo 'Step 5: Installing/Verifying Docker'
                         echo '========================================'
                         
                         sh """
                             ssh -o StrictHostKeyChecking=no -i \${SSH_KEY} ubuntu@${env.EC2_PUBLIC_IP} '
-                                # Update system
-                                echo "Updating system packages..."
-                                sudo apt-get update -y
-                                
-                                # Check if Docker is already installed
-                                if command -v docker &> /dev/null; then
-                                    echo "Docker is already installed"
+                                # Check if Docker is already installed and working
+                                if command -v docker &> /dev/null && sudo docker ps &> /dev/null; then
+                                    echo "✓ Docker is already installed and running"
                                     docker --version
                                     exit 0
                                 fi
                                 
                                 echo "Installing Docker..."
+                                
+                                # Update system only if Docker not installed
+                                echo "Updating system packages..."
+                                sudo apt-get update -y
                                 
                                 # Install Docker dependencies
                                 sudo apt-get install -y ca-certificates curl gnupg lsb-release
@@ -320,11 +346,16 @@ pipeline {
             All steps completed successfully:
             ✓ Step 1: Repository cloned
             ✓ Step 2: Terraform installed
-            ✓ Step 3: EC2 instance created
+            ✓ Step 3: Infrastructure provisioned/verified
             ✓ Step 4: SSH connection established
-            ✓ Step 5: Docker installed on server
+            ✓ Step 5: Docker installed/verified
             ✓ Step 6: Docker image built and deployed
-            ✓ Step 7: Application verified (S3 state used)
+            ✓ Step 7: Application verified
+            
+            Pipeline optimized for DevOps efficiency:
+            • First run: Full infrastructure setup (~10 min)
+            • Subsequent runs: Fast deployment (~2-3 min)
+            • State managed via S3 + DynamoDB locking
             ========================================
             '''
             
