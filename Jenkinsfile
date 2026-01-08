@@ -85,47 +85,44 @@ pipeline {
                             sh '$HOME/.local/bin/terraform init -reconfigure'
                             
                             echo 'Planning infrastructure changes...'
-                            def planExitCode = sh(
-                                script: '''
-                                    if ! $HOME/.local/bin/terraform plan \
-                                        -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
-                                        -out=tfplan \
-                                        -detailed-exitcode \
-                                        -lock-timeout=5m 2>&1 | tee /tmp/tf_plan.log; then
+                            
+                            // First, check and clear any stale locks
+                            sh '''
+                                set +e
+                                $HOME/.local/bin/terraform plan \
+                                    -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
+                                    -out=tfplan \
+                                    -detailed-exitcode \
+                                    -lock-timeout=10s 2>&1 | tee /tmp/tf_plan_attempt.log
+                                PLAN_EXIT=$?
+                                
+                                # Check for lock error
+                                if grep -q "Error acquiring the state lock" /tmp/tf_plan_attempt.log; then
+                                    echo "⚠️  State lock detected from stale/previous run"
+                                    LOCK_ID=$(grep "ID:" /tmp/tf_plan_attempt.log | grep -v "Path:" | grep -v "Operation:" | head -1 | awk '{print $2}')
+                                    
+                                    if [ ! -z "$LOCK_ID" ]; then
+                                        echo "Forcing unlock of state lock: $LOCK_ID"
+                                        $HOME/.local/bin/terraform force-unlock -force "$LOCK_ID" || true
+                                        sleep 2
                                         
-                                        EXIT_CODE=$?
-                                        # Exit code 2 means changes detected (not an error)
-                                        if [ $EXIT_CODE -eq 2 ]; then
-                                            exit 2
-                                        fi
-                                        
-                                        # Check if it's a lock error
-                                        if grep -q "Error acquiring the state lock" /tmp/tf_plan.log; then
-                                            echo "⚠️  State lock detected, extracting lock ID..."
-                                            LOCK_ID=$(grep "ID:" /tmp/tf_plan.log | head -1 | awk '{print $2}')
-                                            
-                                            if [ ! -z "$LOCK_ID" ]; then
-                                                echo "Forcing unlock of state lock: $LOCK_ID"
-                                                $HOME/.local/bin/terraform force-unlock -force "$LOCK_ID"
-                                                
-                                                echo "Retrying plan..."
-                                                $HOME/.local/bin/terraform plan \
-                                                    -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
-                                                    -out=tfplan \
-                                                    -detailed-exitcode \
-                                                    -lock-timeout=5m
-                                                exit $?
-                                            else
-                                                echo "❌ Could not extract lock ID"
-                                                exit 1
-                                            fi
-                                        else
-                                            exit 1
-                                        fi
+                                        echo "Retrying plan after unlock..."
+                                        $HOME/.local/bin/terraform plan \
+                                            -var="allowed_ssh_cidr=[\\"34.245.151.138/32\\"]" \
+                                            -out=tfplan \
+                                            -detailed-exitcode \
+                                            -lock-timeout=5m 2>&1 | tee /tmp/tf_plan_final.log
+                                        PLAN_EXIT=$?
+                                    else
+                                        echo "❌ Could not extract lock ID"
+                                        exit 1
                                     fi
-                                ''',
-                                returnStatus: true
-                            )
+                                fi
+                                
+                                exit $PLAN_EXIT
+                            '''
+                            
+                            def planExitCode = sh(returnStatus: true, script: 'exit $?')
                             
                             // Exit code: 0=no changes, 2=changes detected, 1=error
                             if (planExitCode == 2) {
